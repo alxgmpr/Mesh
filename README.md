@@ -11,11 +11,17 @@ Can be configured to skip the scraping methods and use a preset SKU.PID. Read th
 ## Todo
 
 [jd,fp] Add to cat
+
 [jd] Remove cart id reliance
+
 [] Checkout
+
 [] Paypal
+
 [] Threading
+
 [] Proxies
+
 
 
 ## License
