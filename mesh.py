@@ -5,6 +5,9 @@ import requests
 
 # Mesh atc bot by Alex
 
+# API technique from Luke Davis (@R8T3D)
+# See https://github.com/R8T3D/MeshAPI
+
 
 def log(text):
     t = strftime("%H:%M:%S")
