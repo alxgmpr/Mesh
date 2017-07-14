@@ -1,29 +1,40 @@
-## Mesh bot
+## Mesh Bot
 
-Designed to scrape products from a mesh site and try to add to cart. Work in progress. Contact me if you're interested.
+Python script to scrape products from one of 3 Mesh Commerce platforms. If a scraped product matches the configured 
+keywords, the script adds the product to cart. Designed for shoe releases.
 
 ## Config
 
-Set the keywords separated by comas in the Mesh class __init__. Read the comments for the settings.
+Change the settings in config.json to match your needs. Positive keyword search is greedy, meaning products must match
+all keywords. Separate with comas. See config.example.json for more formatting help.
 
-Can be configured to skip the scraping methods and use a preset SKU.PID. Read the comments.
+## Usage
+
+#### Installation
+
+```
+$ cd Mesh
+$ pip install -r requirements.txt
+```
+
+#### Running
+
+```
+$ python main.py
+```
+
+## Known Issues
+
+You need a predefined cart ID for Footpatrol. Havent found a way around this yet. You can scrape Cart ID using Charles
+Proxy or something similar to sniff mobile traffic. 
 
 ## Todo
 
-[jd,fp] Add to cat
-
-[jd] Remove cart id reliance
-
-[] Checkout
-
-[] Paypal
-
-[] Threading
-
-[] Proxies
-
+* Proxy support with multithreading
+* Full checkout
+* Add support for Footpatrol missing cart ID
 
 
 ## License
 
-Go crazy. Give me credit. Give Luke Davis credit too.
+Released under MIT license. Credit is nice.
