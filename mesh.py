@@ -36,11 +36,12 @@ class Mesh:
         # item to your cart, collecting the ID from the PUT request and replacing them below. JD has a method to not
         # use a pre-defined cart ID but I still recommend picking a new one before each drop
         self.fp_cart_id = "F910C601A44F46B6864E124D07322B1D"  # Footpartrol cart ID. Cannot be none.
-        self.sz_cart_id = None  # Size? cart ID. Cannot be none.
+        self.sz_cart_id = "6D37281E6AC94E219F397726377D8EB1"  # Size? cart ID. Leave none to start a new cart
         self.jd_cart_id = "BB6059232A984FE7BEEAE55321EAB0EC"  # JD Sports cart ID. Leave none to start new cart.
+        self.skupid = "005957.996488"  # If we find a hit item, store PID here (or set to something else to jump to atc)
         # item settings
-        self.keywords = "yeezy".split(',')  # Positive keywords (must match all keywords)
-        self.negatives = "low,twill".split(',')  # Negative keywords (matching any of these discards item)
+        self.keywords = "yeezy,boost".split(',')  # Positive keywords (must match all keywords)
+        self.negatives = "infant".split(',')  # Negative keywords (matching any of these discards item)
         self.size = "7.5"
         if self.site == 'FP':
             self.api_key = '5F9D749B65CD44479C1BA2AA21991925'
@@ -64,7 +65,6 @@ class Mesh:
         self.products = []  # List for storing scraped products
         self.matches = []  # Matching product list. Proceed if we only find one (or pick)
         self.variants = []  # List of product variants (in case size is sold out)
-        self.skupid = "005957.996484"  # If we find a hit item, store it here
         self.s = requests.Session()
         log("MeshAPI by Luke Davis (@R8T3D)")
         log("ATC by Alex Gompper (@573supreme/@edzart)")
@@ -188,10 +188,9 @@ class Mesh:
             if self.site == 'JD':
                 url = "https://m.jdsports.co.uk/cart/{}".format(self.skupid)
             elif self.site == 'SZ':
-                log("[error] need to use cart id for size")
-                exit(-1)
+                url = "https://www.size.co.uk/cart/{}".format(self.skupid)
             else:
-                log("[error] need to use a cart ID for footpatrol")
+                log("[error] need to use a predefined cart ID for footpatrol")
                 exit(-1)
             payload = {
                 "SKU": self.skupid,
@@ -224,7 +223,7 @@ class Mesh:
                 log("[cart] cart id {}".format(self.cart_id))
             else:
                 log("[error] got bad status code {} from post request".format(r.status_code))
-        else:
+        else:  # if we have a predefined cart ID, use it + PUT method
             log("[PUT METHOD]")
             if self.site == 'JD':
                 data = '{"contents":[{"$schema":"https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/schema\\/CartProduct","SKU":"{}","quantity":1}]}'.format(self.skupid)
@@ -248,7 +247,7 @@ class Mesh:
                 log("[error] got bad status code {} from put request".format(r.status_code))
 
     def checkout(self):
-        log("[checkout] checking out")
+        log("[checkout] check out not implemented yet")
 
 pick = raw_input("[{}] :: pick mesh site (FP, JD, SZ) \n>".format(strftime("%H:%M:%S")))
 m = Mesh(pick)
@@ -277,4 +276,4 @@ if (len(m.matches) is 1) or (m.skupid is not None):
 else:
     log("[exec] multiple matches found")
 
-log("[time] {} seconds to finish".format(m.start-time()))
+log("[time] {} seconds to finish".format(abs(m.start-time())))
