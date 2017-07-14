@@ -2,6 +2,7 @@ from logger import Logger
 from product import Product
 from variant import Variant
 from time import time
+import json
 import requests
 log = Logger().log
 
@@ -9,19 +10,22 @@ log = Logger().log
 class Mesh:
     def __init__(self, site):
 
+        with open('config.json') as config:
+            self.settings = json.load(config)
+
         self.site = site
         self.start = time()  # For timing purposes
         # Cart tokens should be replaced before each drop. Sniff the iOS traffic to pick a new one by adding a bs
         # item to your cart, collecting the ID from the PUT request and replacing them below. JD has a method to not
         # use a pre-defined cart ID but I still recommend picking a new one before each drop
-        self.fp_cart_id = "F910C601A44F46B6864E124D07322B1D"  # Footpartrol cart ID. Cannot be none.
-        self.sz_cart_id = "6D37281E6AC94E219F397726377D8EB1"  # Size? cart ID. Leave none to start a new cart
-        self.jd_cart_id = "BB6059232A984FE7BEEAE55321EAB0EC"  # JD Sports cart ID. Leave none to start new cart.
-        self.skupid = None  # If we find a hit item, store PID here (or set to something else to jump to atc)
+        self.fp_cart_id = self.settings['cart_ids']['fp_id']  # Footpartrol cart ID. Cannot be none.
+        self.sz_cart_id = self.settings['cart_ids']['sz_id']  # Size? cart ID. Leave none to start a new cart
+        self.jd_cart_id = self.settings['cart_ids']['jd_id']  # JD Sports cart ID. Leave none to start new cart.
+        self.skupid = self.settings['product']['preset_sku']  # If we find a hit item, store PID here (or set to something else to jump to atc)
         # item settings
-        self.keywords = "yeezy,boost".split(',')  # Positive keywords (must match all keywords)
-        self.negatives = "infant".split(',')  # Negative keywords (matching any of these discards item)
-        self.size = "7.5"
+        self.keywords = self.settings['product']['positive_kw'].split(',')  # Positive keywords (must match all keywords)
+        self.negatives = self.settings['product']['negative_kw'].split(',')  # Negative keywords (matching any of these discards item)
+        self.size = self.settings['product']['size']
         if self.site == 'FP':
             self.api_key = '5F9D749B65CD44479C1BA2AA21991925'
             self.user_agent = 'FootPatrol/2.0 CFNetwork/808.3 Darwin/16.3.0'

@@ -30,8 +30,10 @@ def main():
                 if m.add_to_cart():
                     m.checkout()
         elif m.skupid is not None:
-            if m.add_to_cart():
-                m.checkout()
+            while not m.add_to_cart():
+                log("[sleep] unable to add to cart, waiting and refreshing")
+                sleep(5)
+            m.checkout()
         else:
             log("[exec] failed to find a good size")
     else:
