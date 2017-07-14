@@ -1,0 +1,13 @@
+{
+  "cart_ids" : {
+    "fp_id": "",
+    "jd_id": "",
+    "sz_id": ""
+  },
+  "product": {
+    "preset_sku": "",
+    "positive_kw": "",
+    "negative_kw": "",
+    "size": ""
+  }
+}
