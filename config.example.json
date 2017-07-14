@@ -1,3 +1,13 @@
 {
-
+  "cart_ids" : {
+    "fp_id": "CANNOT BE BLANK",
+    "jd_id": "LEAVE BLANK TO START NEW CART",
+    "sz_id": "LEAVE BLANK TO START NEW CART"
+  },
+  "product": {
+    "preset_sku": "",
+    "positive_kw": "yeezy,boost",
+    "negative_kw": "infant,boot",
+    "size": "10"
+  }
 }
