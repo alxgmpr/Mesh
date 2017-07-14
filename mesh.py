@@ -2,29 +2,15 @@
 
 from time import strftime, time, sleep
 import requests
+from classes.logger import Logger
+from classes.product import Product
+from classes.variant import Variant
+log = Logger().log
 
 # Mesh atc bot by Alex
 
 # API technique from Luke Davis (@R8T3D)
 # See https://github.com/R8T3D/MeshAPI
-
-
-def log(text):
-    t = strftime("%H:%M:%S")
-    print "[{}] :: {}".format(t, text)
-
-
-class Product:
-    def __init__(self, sku, name, stock):
-        self.sku = sku
-        self.name = name.lower().split(' ')
-
-
-class Variant:
-    def __init__(self, size, sku, stock):
-        self.size = size
-        self.sku = sku
-        self.stock = stock
 
 
 class Mesh:
@@ -38,7 +24,7 @@ class Mesh:
         self.fp_cart_id = "F910C601A44F46B6864E124D07322B1D"  # Footpartrol cart ID. Cannot be none.
         self.sz_cart_id = "6D37281E6AC94E219F397726377D8EB1"  # Size? cart ID. Leave none to start a new cart
         self.jd_cart_id = "BB6059232A984FE7BEEAE55321EAB0EC"  # JD Sports cart ID. Leave none to start new cart.
-        self.skupid = "005957.996488"  # If we find a hit item, store PID here (or set to something else to jump to atc)
+        self.skupid = None  # If we find a hit item, store PID here (or set to something else to jump to atc)
         # item settings
         self.keywords = "yeezy,boost".split(',')  # Positive keywords (must match all keywords)
         self.negatives = "infant".split(',')  # Negative keywords (matching any of these discards item)
@@ -102,6 +88,14 @@ class Mesh:
 
                 }
                 url = "https://commerce.mesh.mx/stores/footpatrol/products/category/footwear/all-footwear"
+            else:
+                params = {
+                    "from": 0,
+                    "max": max,
+                    "channel": "iphone-app"
+
+                }
+                url = "https://commerce.mesh.mx/stores/size/products/category/mens/footwear"
             r = requests.request(
                 'GET',
                 url,
@@ -226,7 +220,13 @@ class Mesh:
         else:  # if we have a predefined cart ID, use it + PUT method
             log("[PUT METHOD]")
             if self.site == 'JD':
-                data = '{"contents":[{"$schema":"https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/schema\\/CartProduct","SKU":"{}","quantity":1}]}'.format(self.skupid)
+                data = '{' \
+                       '"contents":[{' \
+                       '"$schema":"https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/schema\\/CartProduct",' \
+                       '"SKU":"{}",' \
+                       '"quantity":1' \
+                       '}]' \
+                       '}'.format(self.skupid)
                 r = self.s.request(
                     'PUT',
                     'https://commerce.mesh.mx/stores/jdsports/carts/' + self.cart_id,
