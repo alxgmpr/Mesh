@@ -9,5 +9,16 @@
     "positive_kw": "yeezy,boost",
     "negative_kw": "infant,boot",
     "size": "10"
+  },
+  "checkout": {
+    "fname": "John",
+    "lname": "Doe",
+    "email": "jdoe@me.com",
+    "phone": "1234567890",
+    "addr1": "123 Fake St.",
+    "addr2": "Unit 22",
+    "city": "Columbia",
+    "state": "Missouri",
+    "zip": "65201"
   }
 }
