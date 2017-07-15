@@ -4,6 +4,7 @@ from variant import Variant
 from time import time
 import json
 import requests
+
 log = Logger().log
 
 
@@ -21,10 +22,17 @@ class Mesh:
         self.fp_cart_id = self.settings['cart_ids']['fp_id']  # Footpartrol cart ID. Cannot be none.
         self.sz_cart_id = self.settings['cart_ids']['sz_id']  # Size? cart ID. Leave none to start a new cart
         self.jd_cart_id = self.settings['cart_ids']['jd_id']  # JD Sports cart ID. Leave none to start new cart.
-        self.skupid = self.settings['product']['preset_sku']  # If we find a hit item, store PID here (or set to something else to jump to atc)
+        self.skupid = self.settings['product']['preset_sku']  # Leave none to search or set to SKU.PID to skip search
+        # customer settings
+        self.customer_id = None  # Stored for checkout
+        self.address_id = None  # Stored for checkout
+        self.payment_id = None  # Stored for checkout
+        self.delivery_id = None  # Stored for checkout
         # item settings
-        self.keywords = self.settings['product']['positive_kw'].split(',')  # Positive keywords (must match all keywords)
-        self.negatives = self.settings['product']['negative_kw'].split(',')  # Negative keywords (matching any of these discards item)
+        self.keywords = self.settings['product']['positive_kw'].split(
+            ',')  # Positive keywords (must match all keywords)
+        self.negatives = self.settings['product']['negative_kw'].split(
+            ',')  # Negative keywords (matching any of these discards item)
         self.size = self.settings['product']['size']
         if self.site == 'FP':
             self.api_key = '5F9D749B65CD44479C1BA2AA21991925'
@@ -105,7 +113,8 @@ class Mesh:
                     name = "{} {}".format(name, prod['colour'])
                 except KeyError:
                     name = prod['name']
-                log("[prod] {} \t {} \t {}".format(prod['stockStatus'].encode('utf-8').strip(), prod['SKU'].encode('utf-8').strip(), name))
+                log("[prod] {} \t {} \t {}".format(prod['stockStatus'].encode('utf-8').strip(),
+                                                   prod['SKU'].encode('utf-8').strip(), name))
                 p = Product(
                     prod['SKU'].encode('utf-8').strip(),
                     name,
@@ -175,73 +184,158 @@ class Mesh:
     def add_to_cart(self):
         log("[atc] adding product to cart")
         if self.cart_id is None:
-            log("[POST METHOD]")
-            if self.site == 'JD':
-                url = "https://m.jdsports.co.uk/cart/{}".format(self.skupid)
-            elif self.site == 'SZ':
-                url = "https://www.size.co.uk/cart/{}".format(self.skupid)
+            log("[POST METHOD] (not using predefined cart ID)")
+            if self.site is 'JD':
+                url = "https://commerce.mesh.mx/stores/jdsports/carts"
+                payload = {
+                    "channel": "iphone-app",
+                    "contents": [{
+                        "$schema": "https:\/\/commerce.mesh.mx\/stores\/jdsports\/schema\/CartProduct",
+                        "SKU": self.skupid,
+                        "quantity": 1
+                    }]
+                }
             else:
-                log("[error] need to use a predefined cart ID for footpatrol")
-                exit(-1)
-            payload = {
-                "SKU": self.skupid,
-                "cartPosition": None,
-                "quantityToAdd": 1,
-                "customisations": []
-            }
-            headers = {
-                "accept": "*/*",
-                "origin": "https://m.jdsports.co.uk",
-                "x-requested-with": "XMLHttpRequest",
-                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
-                "content-type": "application/json",
-                "dnt": "1",
-                "referer": "https://m.jdsports.co.uk/product/",
-                "accept-encoding": "gzip, deflate, br",
-                "accept-language": "en-US,en;q=0.8",
-                "cache-control": "no-cache"
-            }
+                url = "https://commerce.mesh.mx/stores/{}/carts".format(self.sitename)
+                payload = {
+                    "channel": "iphone-app",
+                    "products": [{
+                        "SKU": self.skupid,
+                        "quantity": 1
+                    }]
+                }
             r = self.s.request(
                 'POST',
                 url,
-                headers=headers,
+                headers=self.headers,
                 data=payload
             )
-            if (r.status_code >= 200) and (r.status_code < 210):
-                r.json()
+            if r.status_code is 200 or 201:
+                r = r.json()
                 log("[cart] got good status code from post request")
                 self.cart_id = r['ID']
-                log("[cart] cart id {}".format(self.cart_id))
+                log("[cart] new cart id {}".format(self.cart_id))
             else:
                 log("[error] got bad status code {} from post request".format(r.status_code))
         else:  # if we have a predefined cart ID, use it + PUT method
-            log("[PUT METHOD]")
+            log("[PUT METHOD] (using predefined cart ID)")
             if self.site == 'JD':
-                data = '{' \
-                       '"contents":[{' \
-                       '"$schema":"https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/schema\\/CartProduct",' \
-                       '"SKU":"{}",' \
-                       '"quantity":1' \
-                       '}]' \
-                       '}'.format(self.skupid)
-                r = self.s.request(
-                    'PUT',
-                    'https://commerce.mesh.mx/stores/jdsports/carts/' + self.cart_id,
-                    headers=self.headers,
-                    data=data
-                )
+                url = 'https://commerce.mesh.mx/stores/jdsports/carts/' + self.cart_id
+                data = {
+                    "contents": [{
+                        "$schema": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/schema\\/CartProduct",
+                        "SKU": self.skupid,
+                        "quantity": "1"
+                    }]
+                }
             else:
-                r = self.s.request(
-                    'PUT',
-                    'https://commerce.mesh.mx/stores/' + self.sitename + '/carts/' + self.cart_id + '/' + self.skupid,
-                    headers=self.headers,
-                    data='{"quantity":1}'
-                )
+                url = 'https://commerce.mesh.mx/stores/' + self.sitename + '/carts/' + self.cart_id + '/' + self.skupid
+                data = {
+                    "quantity": 1
+                }
+            r = self.s.request(
+                'PUT',
+                url,
+                headers=self.headers,
+                data=data
+            )
 
             if (r.status_code >= 200) and (r.status_code < 210):
                 log("[cart] got good status code from put request")
             else:
                 log("[error] got bad status code {} from put request".format(r.status_code))
 
+    def create_customer(self):
+        log("[customer] creating customer and address ID")
+        url = "https://commerce.mesh.mx/stores/{}/customers".format(self.sitename)
+        data = {
+            "phone": self.settings['checkout']['phone'],
+            "gender": "",
+            "firstName": self.settings['checkout']['fname'],
+            "addresses": [{
+                "locale": "us",
+                "county": self.settings['checkout']['state'],
+                "country": "United States",
+                "address1": self.settings['checkout']['addr1'],
+                "town": self.settings['checkout']['city'],
+                "postcode": self.settings['checkout']['zip'],
+                "isPrimaryBillingAddress": True,
+                "isPrimaryAddress": True,
+                "address2": self.settings['checkout']['addr2']
+            }],
+            "title": "",
+            "email": self.settings['checkout']['email'],
+            "isGuest": True,
+            "lastName": self.settings['checkout']['lname']
+        }
+        r = self.s.request(
+            'POST',
+            url,
+            headers=self.headers,
+            data=data
+        )
+        if r.status_code is 200 or 201:
+            log("[customer] got good status code from customer creation post")
+            r = r.json()
+            try:
+                self.customer_id = r['ID']
+                self.address_id = r['addresses'][0]['ID']
+                log("[customer] got customer id {}".format(self.customer_id))
+                log("[customer] got address id {}".format(self.address_id))
+            except KeyError:
+                log("[error] key error when parsing customer response json")
+                exit(-1)
+        else:
+            log("[error] got bad status code {} from customer creation post".format(r.status_code))
+            exit(-1)
+
+    def submit_ids(self):
+        url = "https://commerce.mesh.mx/stores/{}/carts/{}".format(self.sitename, self.cart_id)
+        if self.site is 'JD':
+            data = {
+                "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/carts\\/{}".format(self.cart_id),
+                "customer": {
+                    "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}".format(self.customer_id)
+                },
+                "billingAddress": {
+                    "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}\/addresses\\/{}".format(
+                        self.customer_id,
+                        self.address_id
+                    )
+                },
+                "deliveryAddress": {
+                    "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}\\/addresses\\/{}".format(
+                        self.customer_id,
+                        self.address_id
+                    )
+                }
+            }
+        else:
+            data = {
+                "customerID": self.customer_id,
+                "billingAddressID": self.address_id,
+                "deliveryAddressID": self.address_id
+            }
+        r = self.s.request(
+            'PUT',
+            url,
+            headers=self.headers,
+            data=data
+        )
+        if r.status_code is 200:
+            log("[ids] got good response code from customer id post")
+        else:
+            log("[error] got bad status code {} from customer id post")
+            exit(-1)
+
+    def start_hosted_payment(self):
+        log("[payment] starting hosted payment")
+        url = "https://commerce.mesh.mx/stores/{}/carts/{}/hostedPayment".format(self.sitename, self.cart_id)
+        data = {
+
+        }
+
     def checkout(self):
         log("[checkout] check out not implemented yet")
+        self.create_customer()
+        self.submit_ids()
