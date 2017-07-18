@@ -336,6 +336,7 @@ class Mesh:
                 log("[ids] found delivery id {}".format(self.delivery_id))
             except KeyError:
                 log("[erorr] key error while parsing customer json")
+                exit(-1)
         else:
             log("[error] got bad status code {} from customer id post")
             exit(-1)
@@ -362,13 +363,15 @@ class Mesh:
             try:
                 r = r.json()
                 self.payment_id = r['ID']
-                self.hps_id = r['']
+                self.hps_id = r['terminalEndPoints']['cardEntryURL'].split('HPS_SessionID=')[1]
                 log("[ids] found payment id {}".format(self.payment_id))
                 log("[ids] found hps session id {}".format(self.hps_id))
             except KeyError:
                 log("[error] key error while parsing hosted payment json")
+                return False
         else:
             log("[payment] got bad status code {} from hosted payment post")
+            return False
 
     def submit_card(self):
         log("[card] grabbing card session cookie")
@@ -389,6 +392,7 @@ class Mesh:
             log("[card] got good status code from hps get")
         else:
             log("[error] got bad status code {} from hps get".format(r.status_code))
+            return False
         log("[card] submitting card info")
         url = "https://hps.datacash.com/hps/?"
         data = {
@@ -418,14 +422,17 @@ class Mesh:
             headers=headers,
             data=data
         )
+        if r.status_code is not 200:
+            log("[error] bad status code {} from card info post".format(r.status_code))
+            return False
         if "error_message" in r.content:
             log("[error] encountered error while posting card info")
-            exit(-1)
+            return False
         else:
             log("[card] successfully submitted card info")
 
     def checkout(self):
-        log("[checkout] check out not implemented yet")
+        log("[checkout] check out not fully implemented yet")
         self.create_customer()
         self.submit_ids()
         self.start_hosted_payment()
