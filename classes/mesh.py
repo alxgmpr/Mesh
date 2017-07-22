@@ -357,7 +357,8 @@ class Mesh:
                 log("[error] key error while parsing hosted payment json")
                 return False
         else:
-            log("[payment] got bad status code {} from hosted payment post")
+            log("[payment] got bad status code {} from hosted payment post".format(r.status_code))
+            print r.text
             return False
 
     def submit_card(self):
@@ -420,8 +421,8 @@ class Mesh:
             log("[card] successfully submitted card info")
 
     def checkout(self):
-        log("[checkout] check out not fully implemented yet")
+        log("[checkout] check out not fully implemented yet - use at your own risk")
         self.create_customer()
         self.submit_ids()
-        self.start_hosted_payment()
-        self.submit_card()
+        if self.start_hosted_payment():
+            self.submit_card()
