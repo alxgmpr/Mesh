@@ -8,6 +8,8 @@ keywords, the script adds the product to cart. Designed for shoe releases.
 Change the settings in config.json to match your needs. Positive keyword search is greedy, meaning products must match
 all keywords. Separate with comas. See config.example.json for more formatting help.
 
+Blank values must be set to null. 
+
 ## Usage
 
 #### Installation
@@ -25,14 +27,13 @@ $ python main.py
 
 ## Known Issues
 
-You need a predefined cart ID for Footpatrol. Havent found a way around this yet. You can scrape Cart ID using Charles
-Proxy or something similar to sniff mobile traffic. 
+Have had trouble posting to DataCash card endpoint. Workin on it.
 
 ## Todo
 
 * Proxy support with multithreading
-* Full checkout
-* Add support for Footpatrol missing cart ID
+* ~~Full checkout~~
+* ~~Add support for Footpatrol missing cart ID~~
 
 
 ## License
