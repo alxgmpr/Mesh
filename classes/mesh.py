@@ -9,44 +9,31 @@ log = Logger().log
 
 
 class Mesh:
-    def __init__(self, site):
-
+    def __init__(self):
         with open('config.json') as config:
             self.settings = json.load(config)
-
-        self.site = site
         self.start = time()  # For timing purposes
-        # Cart tokens should be replaced before each drop. Sniff the iOS traffic to pick a new one by adding a bs
-        # item to your cart, collecting the ID from the PUT request and replacing them below. JD has a method to not
-        # use a pre-defined cart ID but I still recommend picking a new one before each drop
-        self.fp_cart_id = self.settings['cart_ids']['fp_id']  # Footpartrol cart ID. Cannot be none.
-        self.sz_cart_id = self.settings['cart_ids']['sz_id']  # Size? cart ID. Leave none to start a new cart
-        self.jd_cart_id = self.settings['cart_ids']['jd_id']  # JD Sports cart ID. Leave none to start new cart.
-        self.skupid = self.settings['product']['preset_sku']  # Leave none to search or set to SKU.PID to skip search
-
         # item settings
-        self.keywords = self.settings['product']['positive_kw'].split(
-            ',')  # Positive keywords (must match all keywords)
-        self.negatives = self.settings['product']['negative_kw'].split(
-            ',')  # Negative keywords (matching any of these discards item)
+        self.keywords = self.settings['product']['positive_kw'].split(',')  # Positive keywords (must match all keywords)
+        self.negatives = self.settings['product']['negative_kw'].split(',')  # Negative keywords (matching any of these discards item)
         self.size = self.settings['product']['size']
-        if self.site == 'FP':
+        if self.settings['site'] == 'FP':
             self.api_key = '5F9D749B65CD44479C1BA2AA21991925'
             self.user_agent = 'FootPatrol/2.0 CFNetwork/808.3 Darwin/16.3.0'
-            self.cart_id = self.fp_cart_id
+            self.cart_id = self.settings['cart_ids']['fp_id']
             self.sitename = 'footpatrol'
-        elif self.site == 'JD':
+        elif self.settings['site'] == 'JD':
             self.api_key = '1A17CC86AC974C8D9047262E77A825A4'
             self.user_agent = 'JDSports/5.3.1.207 CFNetwork/808.3 Darwin/16.3.0'
-            self.cart_id = self.jd_cart_id
+            self.cart_id = self.settings['cart_ids']['jd_id']
             self.sitename = 'jdsports'
-        elif self.site == 'SZ':
+        elif self.settings['site'] == 'SZ':
             self.api_key = 'EA0E72B099914EB3BA6BE90A21EA43A9'
             self.user_agent = 'Size-APPLEPAY/4.0 CFNetwork/808.3 Darwin/16.3.0'
-            self.cart_id = self.sz_cart_id
+            self.cart_id = self.settings['cart_ids']['sz_id']
             self.sitename = 'size'
         else:
-            log("[error] defining Mesh object with site {}".format(site))
+            log("[error] defining Mesh object with site {}".format(self.settings['site']))
             exit(-1)
 
         self.products = []  # List for storing scraped products
@@ -80,14 +67,14 @@ class Mesh:
         log("[products] building product list")
         try:
             max = 2000
-            if self.site == 'JD':
+            if self.settings['site'] == 'JD':
                 params = {
                     "from": 0,
                     "max": max,
                     "channel": "iphone-app"
                 }
                 url = "https://commerce.mesh.mx/stores/jdsports/products/category/men/mens-footwear"
-            elif self.site == 'FP':
+            elif self.settings['site'] == 'FP':
                 params = {
                     "from": 0,
                     "max": max,
@@ -178,7 +165,7 @@ class Mesh:
         for var in self.variants:
             if var.size == self.size:
                 log("[match] found a matching size {} with sku {}".format(var.size, var.sku))
-                self.skupid = var.sku
+                self.settings['product']['preset_sku'] = var.sku
                 return True
         log("[error] didnt find a matching size {}".format(self.size))
         return False
@@ -187,13 +174,13 @@ class Mesh:
         log("[atc] adding product to cart")
         if self.cart_id is None:
             log("[POST METHOD] (not using predefined cart ID)")
-            if self.site == 'JD':
+            if self.settings['site'] == 'JD':
                 url = "https://commerce.mesh.mx/stores/jdsports/carts"
                 payload = {
                     "channel": "iphone-app",
                     "contents": [{
                         "$schema": "https://commerce.mesh.mx/stores/jdsports/schema/CartProduct",
-                        "SKU": self.skupid,
+                        "SKU": self.settings['product']['preset_sku'],
                         "quantity": 1
                     }]
                 }
@@ -202,7 +189,7 @@ class Mesh:
                 payload = {
                     "channel": "iphone-app",
                     "products": [{
-                        "SKU": self.skupid,
+                        "SKU": self.settings['product']['preset_sku'],
                         "quantity": 1
                     }]
                 }
@@ -223,17 +210,17 @@ class Mesh:
                 return False
         else:  # if we have a predefined cart ID, use it + PUT method
             log("[PUT METHOD] (using predefined cart ID)")
-            if self.site == 'JD':
+            if self.settings['site'] == 'JD':
                 url = 'https://commerce.mesh.mx/stores/jdsports/carts/' + self.cart_id
                 data = {
                     "contents": [{
                         "$schema": "https://commerce.mesh.mx/stores/jdsports/schema/CartProduct",
-                        "SKU": self.skupid,
+                        "SKU": self.settings['product']['preset_sku'],
                         "quantity": 1
                     }]
                 }
             else:
-                url = 'https://commerce.mesh.mx/stores/' + self.sitename + '/carts/' + self.cart_id + '/' + self.skupid
+                url = 'https://commerce.mesh.mx/stores/' + self.sitename + '/carts/' + self.cart_id + '/' + self.settings['product']['preset_sku']
                 data = {
                     "quantity": 1
                 }
@@ -297,7 +284,7 @@ class Mesh:
 
     def submit_ids(self):
         url = "https://commerce.mesh.mx/stores/{}/carts/{}".format(self.sitename, self.cart_id)
-        if self.site is 'JD':
+        if self.settings['site'] is 'JD':
             data = {
                 "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/carts\\/{}".format(self.cart_id),
                 "customer": {
@@ -375,7 +362,7 @@ class Mesh:
 
     def submit_card(self):
         log("[card] grabbing card session cookie")
-        url = "https://hps.datacash.com/hps/?HPS_SessionID=".format(self.hps_id)
+        url = "https://hps.datacash.com/hps/?HPS_SessionID={}".format(self.hps_id)
         headers = {
             "Host": "hps.datacash.com",
             "Connection": "keep-alive",
@@ -394,7 +381,7 @@ class Mesh:
             log("[error] got bad status code {} from hps get".format(r.status_code))
             return False
         log("[card] submitting card info")
-        url = "https://hps.datacash.com/hps/?"
+        url = "https://hps.datacash.com/hps/"
         data = {
             "card_number": self.settings['checkout']['cc'],
             "exp_month": self.settings['checkout']['exp_m'],
@@ -420,7 +407,8 @@ class Mesh:
             'POST',
             url,
             headers=headers,
-            data=data
+            data=data,
+            allow_redirects=False
         )
         if r.status_code is not 200:
             log("[error] bad status code {} from card info post".format(r.status_code))
