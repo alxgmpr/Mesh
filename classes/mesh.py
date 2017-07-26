@@ -1,7 +1,7 @@
 from logger import Logger
 from product import Product
 from variant import Variant
-from time import time
+from time import time, sleep
 import json
 import requests
 
@@ -94,25 +94,36 @@ class Mesh:
                 url,
                 params=params,
                 headers=self.headers
-            ).json()
-            for prod in r['products']:
-                name = prod['name'].encode('utf-8').strip()
+            )
+            if r.status_code != 200:
+                log("[error] got bad status code {} from scrape request".format(r.status_code))
+                print r.text
+                return False
+            else:
                 try:
-                    name = "{} {}".format(name, prod['colour'])
+                    r = r.json()
+                    for prod in r['products']:
+                        name = prod['name'].encode('utf-8').strip()
+                        try:
+                            name = "{} {}".format(name, prod['colour'])
+                        except KeyError:
+                            name = prod['name']
+                        log("[prod] {} \t {} \t {}".format(prod['stockStatus'].encode('utf-8').strip(),
+                                                           prod['SKU'].encode('utf-8').strip(), name))
+                        p = Product(
+                            prod['SKU'].encode('utf-8').strip(),
+                            name,
+                            prod['stockStatus'].encode('utf-8').strip()
+                        )
+                        self.products.append(p)
+                    log("[products] found {} products".format(len(r['products'])))
+                    return True
                 except KeyError:
-                    name = prod['name']
-                log("[prod] {} \t {} \t {}".format(prod['stockStatus'].encode('utf-8').strip(),
-                                                   prod['SKU'].encode('utf-8').strip(), name))
-                p = Product(
-                    prod['SKU'].encode('utf-8').strip(),
-                    name,
-                    prod['stockStatus'].encode('utf-8').strip()
-                )
-                self.products.append(p)
-            log("[products] found {} products".format(len(r['products'])))
+                    log("[error] key error while processing product list json")
+                    return False
         except UnicodeEncodeError:
             log("[error] unicode error on build product request")
-            exit(-1)
+            return False
 
     def check_product_list(self):
         log("[products] checking product list")
@@ -127,8 +138,12 @@ class Mesh:
             if match:
                 self.matches.append(p)
                 log("[match] found a match {} \t {}".format(p.sku, p.name))
-
-        log("[matches] found {} matching item(s)".format(len(self.matches)))
+        if len(self.matches) >= 1:
+            log("[matches] found {} matching item(s)".format(len(self.matches)))
+            return True
+        else:
+            log("[error] no matches found")
+            return False
 
     def get_product_info(self):
         log("[prod] retrieving product info for SKU {}".format(self.matches[0].sku))
@@ -143,22 +158,29 @@ class Mesh:
                 url,
                 headers=self.headers,
                 params=params
-            ).json()
-            for size in r['options']:
-                log("[size] {}  \t sku {} \t {}".format(
-                    size,
-                    r['options'][size]['SKU'],
-                    r['options'][size]['stockStatus']
-                ))
-                v = Variant(
-                    size,
-                    r['options'][size]['SKU'],
-                    r['options'][size]['stockStatus']
-                )
-                self.variants.append(v)
+            )
+            if r.status_code != 200:
+                log("[error] got bad status code {} from product info request".format(r.status_code))
+                print r.text
+                return False
+            else:
+                r = r.json()
+                for size in r['options']:
+                    log("[size] {}  \t sku {} \t {}".format(
+                        size,
+                        r['options'][size]['SKU'],
+                        r['options'][size]['stockStatus']
+                    ))
+                    v = Variant(
+                        size,
+                        r['options'][size]['SKU'],
+                        r['options'][size]['stockStatus']
+                    )
+                    self.variants.append(v)
+                return True
         except KeyError:
             log("[error] exception while getting product info json")
-            exit(-1)
+            return False
 
     def sel_product_sku(self):
         log("[prod] scanning product info for size")
@@ -207,6 +229,7 @@ class Mesh:
                 return True
             else:
                 log("[error] got bad status code {} from post request".format(r.status_code))
+                print r.text
                 return False
         else:  # if we have a predefined cart ID, use it + PUT method
             log("[PUT METHOD] (using predefined cart ID)")
@@ -230,12 +253,12 @@ class Mesh:
                 headers=self.headers,
                 json=data
             )
-
             if (r.status_code >= 200) and (r.status_code < 210):
                 log("[cart] got good status code from put request")
                 return True
             else:
                 log("[error] got bad status code {} from put request".format(r.status_code))
+                print r.text
                 return False
 
     def create_customer(self):
@@ -277,10 +300,11 @@ class Mesh:
                 log("[customer] got address id {}".format(self.address_id))
             except KeyError:
                 log("[error] key error when parsing customer response json")
-                exit(-1)
+                return False
         else:
             log("[error] got bad status code {} from customer creation post".format(r.status_code))
-            exit(-1)
+            print r.text
+            return False
 
     def submit_ids(self):
         url = "https://commerce.mesh.mx/stores/{}/carts/{}".format(self.sitename, self.cart_id)
@@ -323,10 +347,11 @@ class Mesh:
                 log("[ids] found delivery id {}".format(self.delivery_id))
             except KeyError:
                 log("[erorr] key error while parsing customer json")
-                exit(-1)
+                return False
         else:
-            log("[error] got bad status code {} from customer id post")
-            exit(-1)
+            log("[error] got bad status code {} from customer id post".format(r.status_code))
+            print r.text
+            return False
 
     def start_hosted_payment(self):
         log("[payment] starting hosted payment")
@@ -353,6 +378,7 @@ class Mesh:
                 self.hps_id = r['terminalEndPoints']['cardEntryURL'].split('HPS_SessionID=')[1]
                 log("[ids] found payment id {}".format(self.payment_id))
                 log("[ids] found hps session id {}".format(self.hps_id))
+                return True
             except KeyError:
                 log("[error] key error while parsing hosted payment json")
                 return False
@@ -382,7 +408,7 @@ class Mesh:
             log("[error] got bad status code {} from hps get".format(r.status_code))
             return False
         log("[card] submitting card info")
-        url = "https://hps.datacash.com/hps/"
+        url = "https://hps.datacash.com/hps/?i"
         data = {
             "card_number": self.settings['checkout']['cc'],
             "exp_month": self.settings['checkout']['exp_m'],
@@ -404,14 +430,23 @@ class Mesh:
             "Accept-Language": "en-us",
             "Accept-Encoding": "gzip,deflate"
         }
-        r = self.s.request(
-            'POST',
-            url,
-            headers=headers,
-            data=data,
-            allow_redirects=False
-        )
+        try:
+            print url
+            r = self.s.request(
+                'POST',
+                url,
+                headers=headers,
+                data=data,
+                allow_redirects=False
+            )
+        except requests.exceptions.ProxyError:
+            print 'proxy error'
+            sleep(5)
+            print r.url
+            print r.headers
         if r.status_code is not 200:
+            print r.url
+            print r.headers
             log("[error] bad status code {} from card info post".format(r.status_code))
             return False
         if "error_message" in r.content:
