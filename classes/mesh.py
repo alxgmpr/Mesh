@@ -1,3 +1,5 @@
+# coding=utf-8
+
 from logger import Logger
 from product import Product
 from variant import Variant
@@ -7,355 +9,228 @@ import requests
 
 log = Logger().log
 
+# api keys used for headers
+JD_API_KEY = '1A17CC86AC974C8D9047262E77A825A4'
+SZ_API_KEY = 'EA0E72B099914EB3BA6BE90A21EA43A9'
+FP_API_KEY = '5F9D749B65CD44479C1BA2AA21991925'
+# user agents for headers
+FP_UA = 'FootPatrol/2.0 CFNetwork/808.3 Darwin/16.3.0'
+JD_UA = 'JDSports/5.3.1.207 CFNetwork/808.3 Darwin/16.3.0'
+SZ_UA = 'Size-APPLEPAY/4.0 CFNetwork/808.3 Darwin/16.3.0'
+# scraping categories
+FP_CAT = 'footwear/all-footwear'
+SZ_CAT = 'mens/footwear'
+JD_CAT = 'men/mens-footwear'
 
-class Mesh:
-    def __init__(self):
-        with open('config.json') as config:
-            self.settings = json.load(config)
-        self.start = time()  # For timing purposes
-        # item settings
-        self.keywords = self.settings['product']['positive_kw'].split(',')  # Positive keywords (must match all keywords)
-        self.negatives = self.settings['product']['negative_kw'].split(',')  # Negative keywords (matching any of these discards item)
-        self.size = self.settings['product']['size']
-        if self.settings['site'] == 'FP':
-            self.api_key = '5F9D749B65CD44479C1BA2AA21991925'
-            self.user_agent = 'FootPatrol/2.0 CFNetwork/808.3 Darwin/16.3.0'
-            self.cart_id = self.settings['cart_ids']['fp_id']
-            self.sitename = 'footpatrol'
-        elif self.settings['site'] == 'JD':
-            self.api_key = '1A17CC86AC974C8D9047262E77A825A4'
-            self.user_agent = 'JDSports/5.3.1.207 CFNetwork/808.3 Darwin/16.3.0'
-            self.cart_id = self.settings['cart_ids']['jd_id']
-            self.sitename = 'jdsports'
-        elif self.settings['site'] == 'SZ':
-            self.api_key = 'EA0E72B099914EB3BA6BE90A21EA43A9'
-            self.user_agent = 'Size-APPLEPAY/4.0 CFNetwork/808.3 Darwin/16.3.0'
-            self.cart_id = self.settings['cart_ids']['sz_id']
-            self.sitename = 'size'
+
+class Mesh(object):
+    def __init__(self, config_filename):
+        log('MeshAPI by Luke Davis (@R8T3D)')
+        log('ATC by Alex Gompper (@573supreme/@edzart)')
+        try:  # import the config file settings. see config.example.json for help
+            with open(config_filename) as config:
+                self.c = json.load(config)
+        except IOError:
+            raise('couldnt open config file {}'.format(config_filename))
         else:
-            log("[error] defining Mesh object with site {}".format(self.settings['site']))
-            exit(-1)
-
-        self.products = []  # List for storing scraped products
-        self.matches = []  # Matching product list. Proceed if we only find one (or pick)
-        self.variants = []  # List of product variants (in case size is sold out)
-        # customer settings
-        self.customer_id = None  # Stored for checkout
-        self.address_id = None  # Stored for checkout
-        self.payment_id = None  # Stored for checkout
-        self.delivery_id = None  # Stored for checkout
-        self.hps_id = None  # Stored for checkout
-        self.s = requests.Session()
-        log("MeshAPI by Luke Davis (@R8T3D)")
-        log("ATC by Alex Gompper (@573supreme/@edzart)")
-        print
-        log("[init] key: {}".format(self.api_key))
-        log("[init] user-agent: {}".format(self.user_agent))
-
+            log('[init] loaded config file: {}'.format(config_filename))
+        self.S = requests.session()
+        self.start = time()
+        self.proxy = self.c['proxy']
         self.headers = {
             'Host': 'commerce.mesh.mx',
             'Content-Type': 'application/json',
-            'X-API-Key': self.api_key,
             'Accept': '*/*',
             'X-Debug': '1',
             'Accept-Language': 'en-gb',
-            'User-Agent': self.user_agent,
-            'MESH-Commerce-Channel': 'iphone-app',
+            'MESH-Commerce-Channel': 'iphone-app'
         }
-
-    def build_product_list(self):
-        log("[products] building product list")
-        try:
-            max = 2000
-            if self.settings['site'] == 'JD':
-                params = {
-                    "from": 0,
-                    "max": max,
-                    "channel": "iphone-app"
-                }
-                url = "https://commerce.mesh.mx/stores/jdsports/products/category/men/mens-footwear"
-            elif self.settings['site'] == 'FP':
-                params = {
-                    "from": 0,
-                    "max": max,
-                    "channel": "iphone-app"
-
-                }
-                url = "https://commerce.mesh.mx/stores/footpatrol/products/category/footwear/all-footwear"
-            else:
-                params = {
-                    "from": 0,
-                    "max": max,
-                    "channel": "iphone-app"
-                }
-                url = "https://commerce.mesh.mx/stores/size/products/category/mens/footwear"
-            r = requests.request(
-                'GET',
-                url,
-                params=params,
-                headers=self.headers
-            )
-            if r.status_code != 200:
-                log("[error] got bad status code {} from scrape request".format(r.status_code))
-                print r.text
-                return False
-            else:
-                try:
-                    r = r.json()
-                    for prod in r['products']:
-                        name = prod['name'].encode('utf-8').strip()
-                        try:
-                            name = "{} {}".format(name, prod['colour'])
-                        except KeyError:
-                            name = prod['name']
-                        log("[prod] {} \t {} \t {}".format(prod['stockStatus'].encode('utf-8').strip(),
-                                                           prod['SKU'].encode('utf-8').strip(), name))
-                        p = Product(
-                            prod['SKU'].encode('utf-8').strip(),
-                            name,
-                            prod['stockStatus'].encode('utf-8').strip()
-                        )
-                        self.products.append(p)
-                    log("[products] found {} products".format(len(r['products'])))
-                    return True
-                except KeyError:
-                    log("[error] key error while processing product list json")
-                    return False
-        except UnicodeEncodeError:
-            log("[error] unicode error on build product request")
-            return False
-
-    def check_product_list(self):
-        log("[products] checking product list")
-        for p in self.products:
-            match = True
-            for neg in self.negatives:
-                if neg in p.name:
-                    match = False
-            for key in self.keywords:
-                if key not in p.name:
-                    match = False
-            if match:
-                self.matches.append(p)
-                log("[match] found a match {} \t {}".format(p.sku, p.name))
-        if len(self.matches) >= 1:
-            log("[matches] found {} matching item(s)".format(len(self.matches)))
-            return True
+        # distinguish between sites, load respective API keys
+        if self.c['site'].lower() == 'sz':
+            log('[init] running on size')
+            self.headers['X-API-Key'] = SZ_API_KEY
+            self.headers['User-Agent'] = SZ_UA
+            self.sitename = 'size'
+        elif self.c['site'].lower() == 'fp':
+            log('[init] running on fp')
+            self.headers['X-API-Key'] = FP_API_KEY
+            self.headers['User-Agent'] = FP_UA
+            self.sitename = 'footpatrol'
+        elif self.c['site'].lower() == 'jd':
+            log('[init] running on jd')
+            self.headers['X-API-Key'] = JD_API_KEY
+            self.headers['User-Agent'] = JD_UA
+            self.sitenam = 'jdsports'
         else:
-            log("[error] no matches found")
-            return False
+            raise Exception('unrecognized site code in config')
 
-    def get_product_info(self):
-        log("[prod] retrieving product info for SKU {}".format(self.matches[0].sku))
+    def get_all_products(self, count):
+        # scrape products from category pages.
+        # returns a list of product objects
+        log('scraping product categories')
+        products = []
+        params = {
+            "from": 0,
+            "max": count,
+            "channel": "iphone-app"
+        }
+        if self.c['site'].lower() == 'jd':
+            url = 'https://commerce.mesh.mx/stores/jdsports/products/category/{}'.format(JD_CAT)
+        elif self.c['site'].lower() == 'fp':
+            url = 'https://commerce.mesh.mx/stores/footpatrol/products/category/{}'.format(FP_CAT)
+        else:
+            url = 'https://commerce.mesh.mx/stores/size/products/category/{}'.format(SZ_CAT)
+        r = requests.get(
+            url,
+            params=params,
+            headers=self.headers
+        )
+        r.raise_for_status()
         try:
-            params = {
-                "expand": "variations,informationBlocks,customisations",
-                "channel": "iphone-app"
-            }
-            url = "https://commerce.mesh.mx/stores/{}/products/{}".format(self.sitename, self.matches[0].sku)
-            r = requests.request(
-                'GET',
-                url,
-                headers=self.headers,
-                params=params
-            )
-            if r.status_code != 200:
-                log("[error] got bad status code {} from product info request".format(r.status_code))
-                print r.text
-                return False
-            else:
-                r = r.json()
-                for size in r['options']:
-                    log("[size] {}  \t sku {} \t {}".format(
-                        size,
-                        r['options'][size]['SKU'],
-                        r['options'][size]['stockStatus']
-                    ))
-                    v = Variant(
-                        size,
-                        r['options'][size]['SKU'],
-                        r['options'][size]['stockStatus']
-                    )
-                    self.variants.append(v)
-                return True
+            r = r.json()
+            for prod in r['products']:
+                name = prod['name'].encode('utf-8').strip()
+                try:
+                    name = '{} {}'.format(name, prod['colour'])
+                except KeyError:
+                    name = prod['name']
+                p = Product(
+                    prod['SKU'].encode('utf-8').strip(),
+                    name,
+                    prod['stockStatus'].encode('utf-8').strip()
+                )
+                products.append(p)
+            log('found {} products'.format(len(r['products'])))
+            return products
         except KeyError:
-            log("[error] exception while getting product info json")
-            return False
+            raise Exception('couldnt parse category json')
 
-    def sel_product_sku(self):
-        log("[prod] scanning product info for size")
-        for var in self.variants:
-            if var.size == self.size:
-                log("[match] found a matching size {} with sku {}".format(var.size, var.sku))
-                self.settings['product']['preset_sku'] = var.sku
-                return True
-        log("[error] didnt find a matching size {}".format(self.size))
-        return False
+    def select_product(self, product_list):
+        # compare a product against keywords set in the config json
+        # returns a single product object
+        log('selecting matching product from list len: {}'.format(len(product_list)))
 
-    def add_to_cart(self):
-        log("[atc] adding product to cart")
-        if self.cart_id is None:
-            log("[POST METHOD] (not using predefined cart ID)")
-            if self.settings['site'] == 'JD':
-                url = "https://commerce.mesh.mx/stores/jdsports/carts"
-                payload = {
-                    "channel": "iphone-app",
-                    "contents": [{
-                        "$schema": "https://commerce.mesh.mx/stores/jdsports/schema/CartProduct",
-                        "SKU": self.settings['product']['preset_sku'],
-                        "quantity": 1
-                    }]
-                }
-            else:
-                url = "https://commerce.mesh.mx/stores/{}/carts".format(self.sitename)
-                payload = {
-                    "channel": "iphone-app",
-                    "products": [{
-                        "SKU": self.settings['product']['preset_sku'],
-                        "quantity": 1
-                    }]
-                }
-            r = self.s.request(
-                'POST',
-                url,
-                headers=self.headers,
-                json=payload
-            )
-            if r.status_code is 201:
-                r = r.json()
-                log("[cart] got good status code from post request")
-                self.cart_id = r['ID']
-                log("[cart] new cart id {}".format(self.cart_id))
-                return True
-            else:
-                log("[error] got bad status code {} from post request".format(r.status_code))
-                print r.text
-                return False
-        else:  # if we have a predefined cart ID, use it + PUT method
-            log("[PUT METHOD] (using predefined cart ID)")
-            if self.settings['site'] == 'JD':
-                url = 'https://commerce.mesh.mx/stores/jdsports/carts/' + self.cart_id
-                data = {
-                    "contents": [{
-                        "$schema": "https://commerce.mesh.mx/stores/jdsports/schema/CartProduct",
-                        "SKU": self.settings['product']['preset_sku'],
-                        "quantity": 1
-                    }]
-                }
-            else:
-                url = 'https://commerce.mesh.mx/stores/' + self.sitename + '/carts/' + self.cart_id + '/' + self.settings['product']['preset_sku']
-                data = {
+    def get_product_skus(self, product):
+        # scrape product variants and stock status from its info
+        # returns a list of variant objects
+        log('fetching product variants')
+
+    def select_sku(self, variant_list):
+        # compares product variants against sizes in config json
+        # returns a single variant object
+        log('selecting matching variant from list')
+
+    def add_to_cart(self, variant):
+        # adds a particular variant to cart
+        # returns the cart ID as a string
+        log('adding variant to cart')
+        if self.c['site'].lower == 'jd':
+            url = "https://commerce.mesh.mx/stores/jdsports/carts"
+            payload = {
+                "channel": "iphone-app",
+                "contents": [{
+                    "$schema": "https://commerce.mesh.mx/stores/jdsports/schema/CartProduct",
+                    "SKU": self.c['product']['preset_sku'],
                     "quantity": 1
-                }
-            r = self.s.request(
-                'PUT',
-                url,
-                headers=self.headers,
-                json=data
-            )
-            if (r.status_code >= 200) and (r.status_code < 210):
-                log("[cart] got good status code from put request")
-                return True
-            else:
-                log("[error] got bad status code {} from put request".format(r.status_code))
-                print r.text
-                return False
+                }]
+            }
+        else:
+            url = "https://commerce.mesh.mx/stores/{}/carts".format(self.sitename)
+            payload = {
+                "channel": "iphone-app",
+                "products": [{
+                    "SKU": variant.sku,
+                    "quantity": 1
+                }]
+            }
+        r = self.S.post(
+            url,
+            headers=self.headers,
+            json=payload
+        )
+        r.raise_for_status()
+        try:
+            return r.json()['ID']
+        except KeyError:
+            raise Exception('couldnt find new cart id')
 
-    def create_customer(self):
-        log("[customer] creating customer and address ID")
+    def get_customer_ids(self):
+        # creates a new customer
+        # returns customer and address IDs as strings
+        log('creating new customer/address ids')
         url = "https://commerce.mesh.mx/stores/{}/customers".format(self.sitename)
         data = {
-            "phone": self.settings['checkout']['phone'],
+            "phone": self.c['checkout']['phone'],
             "gender": "",
-            "firstName": self.settings['checkout']['fname'],
+            "firstName": self.c['checkout']['fname'],
             "addresses": [{
                 "locale": "us",
-                "county": self.settings['checkout']['state'],
+                "county": self.c['checkout']['state'],
                 "country": "United States",
-                "address1": self.settings['checkout']['addr1'],
-                "town": self.settings['checkout']['city'],
-                "postcode": self.settings['checkout']['zip'],
+                "address1": self.c['checkout']['addr1'],
+                "town": self.c['checkout']['city'],
+                "postcode": self.c['checkout']['zip'],
                 "isPrimaryBillingAddress": True,
                 "isPrimaryAddress": True,
-                "address2": self.settings['checkout']['addr2']
+                "address2": self.c['checkout']['addr2']
             }],
             "title": "",
-            "email": self.settings['checkout']['email'],
+            "email": self.c['checkout']['email'],
             "isGuest": True,
-            "lastName": self.settings['checkout']['lname']
+            "lastName": self.c['checkout']['lname']
         }
-        r = self.s.request(
-            'POST',
+        r = self.S.post(
             url,
             headers=self.headers,
             json=data
         )
-        if r.status_code is 200 or 201:
-            log("[customer] got good status code from customer creation post")
-            r = r.json()
-            try:
-                self.customer_id = r['ID']
-                self.address_id = r['addresses'][0]['ID']
-                log("[customer] got customer id {}".format(self.customer_id))
-                log("[customer] got address id {}".format(self.address_id))
-            except KeyError:
-                log("[error] key error when parsing customer response json")
-                return False
-        else:
-            log("[error] got bad status code {} from customer creation post".format(r.status_code))
-            print r.text
-            return False
+        r.raise_for_status()
+        try:
+            return r.json()['ID'], r.json()['addresses'][0]['ID']
+        except KeyError:
+            raise Exception('couldnt parse customer creation json')
 
-    def submit_ids(self):
-        url = "https://commerce.mesh.mx/stores/{}/carts/{}".format(self.sitename, self.cart_id)
-        if self.settings['site'] is 'JD':
+    def submit_customer(self, customer_id, address_id, cart_id):
+        # submits customer and address ids as strings
+        log('submitting customer/address ids')
+        url = "https://commerce.mesh.mx/stores/{}/carts/{}".format(self.sitename, cart_id)
+        if self.c['site'].lower() is 'jd':
             data = {
-                "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/carts\\/{}".format(self.cart_id),
+                "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/carts\\/{}".format(cart_id),
                 "customer": {
-                    "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}".format(self.customer_id)
+                    "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}".format(customer_id)
                 },
                 "billingAddress": {
                     "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}\/addresses\\/{}".format(
-                        self.customer_id,
-                        self.address_id
+                        customer_id,
+                        address_id
                     )
                 },
                 "deliveryAddress": {
                     "id": "https:\\/\\/commerce.mesh.mx\\/stores\\/jdsports\\/customers\\/{}\\/addresses\\/{}".format(
-                        self.customer_id,
-                        self.address_id
+                        customer_id,
+                        address_id
                     )
                 }
             }
         else:
             data = {
-                "customerID": self.customer_id,
-                "billingAddressID": self.address_id,
-                "deliveryAddressID": self.address_id
+                "customerID": customer_id,
+                "billingAddressID": address_id,
+                "deliveryAddressID": address_id
             }
-        r = self.s.request(
-            'PUT',
+        r = self.S.put(
             url,
             headers=self.headers,
             json=data
         )
-        if r.status_code is 200:
-            log("[ids] got good response code from customer id post")
-            try:
-                r = r.json()
-                self.delivery_id = r['deliveryOptions'][0]['ID']
-                log("[ids] found delivery id {}".format(self.delivery_id))
-            except KeyError:
-                log("[erorr] key error while parsing customer json")
-                return False
-        else:
-            log("[error] got bad status code {} from customer id post".format(r.status_code))
-            print r.text
-            return False
+        r.raise_for_status()
 
-    def start_hosted_payment(self):
-        log("[payment] starting hosted payment")
-        url = "https://commerce.mesh.mx/stores/{}/carts/{}/hostedPayment".format(self.sitename, self.cart_id)
+    def get_hosted_payment(self, cart_id):
+        # starts the datacash hosted payment
+        # returns hps session ID and payment callback url as strings
+        log('starting hosted payment')
+        url = "https://commerce.mesh.mx/stores/{}/carts/{}/hostedPayment".format(self.sitename, cart_id)
         data = {
             "type": "CARD",
             "terminals": {
@@ -364,32 +239,23 @@ class Mesh:
                 "timeoutURL": "https://timeout"
             }
         }
-        r = self.s.request(
-            'POST',
+        r = self.S.post(
             url,
             headers=self.headers,
             json=data
         )
-        if r.status_code is 200:
-            log("[payment] got good status code from hosted payment post")
-            try:
-                r = r.json()
-                self.payment_id = r['ID']
-                self.hps_id = r['terminalEndPoints']['cardEntryURL'].split('HPS_SessionID=')[1]
-                log("[ids] found payment id {}".format(self.payment_id))
-                log("[ids] found hps session id {}".format(self.hps_id))
-                return True
-            except KeyError:
-                log("[error] key error while parsing hosted payment json")
-                return False
-        else:
-            log("[payment] got bad status code {} from hosted payment post".format(r.status_code))
-            print r.text
-            return False
+        r.raise_for_status()
+        try:
+            return r.json()['terminalEndPoints']['hostedPageURL'].split('HPS_SessionID=')[1], \
+                   r.json()['href'].split('payments/')[1]
+        except KeyError:
+            raise Exception('couldnt parse hosted payment json')
 
-    def submit_card(self):
-        log("[card] grabbing card session cookie")
-        url = "https://hps.datacash.com/hps/?HPS_SessionID={}".format(self.hps_id)
+    def submit_payment(self, hps_id):
+        # submits the cc information to the datacash session
+        # returns payment token as string
+        log('opening payment page')
+        url = "https://hps.datacash.com/hps/?HPS_SessionID={}".format(hps_id)
         headers = {
             "Host": "hps.datacash.com",
             "Connection": "keep-alive",
@@ -397,25 +263,20 @@ class Mesh:
             "Accept-Language": "en-us",
             "Accept-Encoding": "gzip,deflate"
         }
-        r = self.s.request(
-            'GET',
+        r = self.S.get(
             url,
             headers=headers
         )
-        if r.status_code is 200:
-            log("[card] got good status code from hps get")
-        else:
-            log("[error] got bad status code {} from hps get".format(r.status_code))
-            return False
-        log("[card] submitting card info")
-        url = "https://hps.datacash.com/hps/?i"
+        r.raise_for_status()
+        log('submitting payment')
+        url = "https://hps.datacash.com/hps/"
         data = {
-            "card_number": self.settings['checkout']['cc'],
-            "exp_month": self.settings['checkout']['exp_m'],
-            "exp_year": self.settings['checkout']['exp_y'],
-            "cv2_number": self.settings['checkout']['cvv'],
+            "card_number": self.c['checkout']['cc'],
+            "exp_month": self.c['checkout']['exp_m'],
+            "exp_year": self.c['checkout']['exp_y'],
+            "cv2_number": self.c['checkout']['cvv'],
             "issue_number": "",
-            "HPS_SessionID": self.hps_id,
+            "HPS_SessionID": hps_id,
             "action": "confirm",
             "continue": ""
         }
@@ -426,38 +287,81 @@ class Mesh:
             "Connection": "keep-alive",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_2 like Mac OS X) AppleWebKit/603.2.4 (KHTML, like Gecko) Mobile/14F89",
-            "Referer": "https://hps.datacash.com/hps/?HPS_SessionID={}".format(self.hps_id),
+            "Referer": "https://hps.datacash.com/hps/?HPS_SessionID={}".format(hps_id),
             "Accept-Language": "en-us",
             "Accept-Encoding": "gzip,deflate"
         }
-        try:
-            print url
-            r = self.s.request(
-                'POST',
-                url,
-                headers=headers,
-                data=data,
-                allow_redirects=False
-            )
-        except requests.exceptions.ProxyError:
-            print 'proxy error'
-            sleep(5)
-            print r.url
-            print r.headers
-        if r.status_code is not 200:
-            print r.url
-            print r.headers
-            log("[error] bad status code {} from card info post".format(r.status_code))
-            return False
-        if "error_message" in r.content:
-            log("[error] encountered error while posting card info")
-            return False
-        else:
-            log("[card] successfully submitted card info")
+        r = self.S.post(
+            url,
+            headers=headers,
+            data=data,
+            allow_redirects=False
+        )
+        return r.headers['Location']
 
-    def checkout(self):
-        log("[checkout] check out not fully implemented yet - use at your own risk")
-        self.create_customer()
-        self.submit_ids()
-        if self.start_hosted_payment():
-            self.submit_card()
+    def fire_callback(self, callback_id, payment_token):
+        # submits the callback with payment token
+        # returns the completed order number as a string
+        log('firing payment callback')
+        url = 'https://commerce.mesh.mx/stores/{}/payments/{}/hostedpaymentresult'.format(self.sitename, callback_id)
+        data = {
+            "HostedPaymentPageResult": payment_token
+        }
+        r = self.S.post(
+            url,
+            headers=self.headers,
+            data=data
+        )
+        r.raise_for_status()
+        try:
+            if r.json()['status'] == 'DECLINED':
+                raise Exception('card was declined')
+            return r.json()['orderClientID']
+        except KeyError:
+            raise Exception('unable to parse callback response json')
+
+m = Mesh('../config.json')
+if m.c['product']['preset_sku'] is None:
+    log('MODE 1: SCRAPING TO FIND MATCHING PRODUCT')
+    # while m.c['product']['preset_sku'] is None:
+    #     product_list = m.get_all_products(25)
+    #     try:
+    #         m.c['product']['preset_sku'] = m.select_product(product_list).sku
+    #     except AttributeError:
+    #         log('didnt find a match, waiting and retrying')
+    #         sleep(m.c['poll_time'])
+    log('functionality not implemented yet')
+else:
+    if len(m.c['product']['preset_sku']) == 6:
+        log('MODE 2: USING PREDEFINED SKU: {}'.format(m.c['product']['preset_sku']))
+        log('functionality not implemented yet')
+    elif len(m.c['product']['preset_sku']) == 13:
+        log('MODE 3: USING PREDEFINED SKU.PID: {}'.format(m.c['product']['preset_sku']))
+        loop = True
+        while loop:
+            try:
+                cart_id = m.add_to_cart(Variant(0, m.c['product']['preset_sku'], True))
+                loop = False
+            except requests.exceptions.HTTPError:
+                log('couldnt atc, sleeping and retrying')
+                sleep(m.c['poll_time'])
+        log('got cart id {}'.format(cart_id))
+        customer_id, address_id = m.get_customer_ids()
+        log('got cust id {}'.format(customer_id))
+        log('got addr id {}'.format(address_id))
+        m.submit_customer(customer_id, address_id, cart_id)
+        loop = True
+        while loop:
+            try:
+                hps_id, payment_callback = m.get_hosted_payment(cart_id)
+                loop = False
+            except requests.exceptions.HTTPError:
+                log('couldnt raise invoice, sleeping and retrying')
+                sleep(m.c['poll_time'])
+        log('got hps id {}'.format(hps_id))
+        log('got callback {}'.format(payment_callback))
+        token = m.submit_payment(hps_id)
+        order = m.fire_callback(payment_callback, token)
+        log('[time] time to complete: {} sec'.format(abs(m.start-time())))
+    else:
+        raise Exception('malformed preset sku')
