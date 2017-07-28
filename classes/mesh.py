@@ -368,6 +368,3 @@ class Mesh(threading.Thread):
             else:
                 raise Exception('malformed preset sku')
 
-mesh1 = Mesh('../config.json', 1)
-mesh1.start()
-

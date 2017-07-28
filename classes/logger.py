@@ -11,7 +11,7 @@ class Logger(object):
 
     def logt(self, tid, text):
         t = strftime(self.format)
-        print '[Thread-{}] :: [{}] :: {}'.format(tid, t, text)
+        print '[{}] :: [{}] :: {}'.format(tid, t, text)
 
     def space(self, char):
         print char*50
