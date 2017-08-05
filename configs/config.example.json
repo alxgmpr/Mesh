@@ -9,7 +9,7 @@
     "preset_sku": null,
     "positive_kw": "yeezy,boost",
     "negative_kw": "infant,boot",
-    "size": "10"
+    "sizes": ["10","9","8","11"]
   },
   "checkout": {
     "fname": "John",
@@ -21,6 +21,8 @@
     "city": "Columbia",
     "state": "Missouri",
     "zip": "65201",
+    "country": "United States",
+    "locale": "us",
     "cc": "4444444444444444",
     "exp_m": "01",
     "exp_y": "2022",
