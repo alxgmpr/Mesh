@@ -28,7 +28,8 @@ class Mesh(threading.Thread):
     def __init__(self, config_filename, tid):
         threading.Thread.__init__(self)
         logt(tid, 'MeshAPI by Luke Davis (@R8T3D)')
-        logt(tid, 'ATC by Alex Gompper (@573supreme/@edzart)\n')
+        logt(tid, 'ATC by Alex Gompper (@573supreme/@edzart)')
+        logt(tid, 'Improved by ServingShoes (@ServingShoescom)\n')
         try:  # import the config file settings. see config.example.json for help
             with open(config_filename) as config:
                 self.c = json.load(config)
@@ -40,6 +41,12 @@ class Mesh(threading.Thread):
         self.tid = tid
         self.start_time = time()
         self.proxy = self.c['proxy']
+        self.matches = []  # Matching product list. Proceed if we only find one (or pick)
+        self.sizes = self.c['product']['sizes']
+        self.keywords = self.c['product']['positive_kw'].split(
+    ',')  # Positive keywords (must match all keywords)
+        self.negatives = self.c['product']['negative_kw'].split(
+            ',')  # Negative keywords (matching any of these discards item)
         self.headers = {
             'Host': 'commerce.mesh.mx',
             'Content-Type': 'application/json',
@@ -63,7 +70,7 @@ class Mesh(threading.Thread):
             logt(tid, '[init] running on jd')
             self.headers['X-API-Key'] = JD_API_KEY
             self.headers['User-Agent'] = JD_UA
-            self.sitenam = 'jdsports'
+            self.sitename = 'jdsports'
         else:
             raise Exception('unrecognized site code in config')
 
@@ -110,21 +117,72 @@ class Mesh(threading.Thread):
 
     def select_product(self, product_list):
         # compare a product against keywords set in the config json
-        # returns a single product object
+        # appends product matches to global self.matches list
         logt(self.tid, 'selecting matching product from list len: {}'.format(len(product_list)))
-        raise Exception('select_product() isnt implemented yet')
+        for p in product_list:
+            match = True
+            for neg in self.negatives:
+                if neg in p.name:
+                    match = False
+            for key in self.keywords:
+                if key not in p.name:
+                    match = False
+            if match:
+                self.matches.append(p)
+                logt(self.tid,"[match] found a match {} \t {}".format(p.sku, p.name))
+
+        logt(self.tid,"[matches] found {} matching item(s)".format(len(self.matches)))
+        #raise Exception('select_product() isnt implemented yet')
 
     def get_product_skus(self, product):
         # scrape product variants and stock status from its info
         # returns a list of variant objects
         logt(self.tid, 'fetching product variants')
-        raise Exception('get_product_skus() isnt implemented yet')
+        variants=[]
+        try:
+            params = {
+                "expand": "variations,informationBlocks,customisations",
+                "channel": "iphone-app"
+            }
+            url = "https://commerce.mesh.mx/stores/{}/products/{}".format(self.sitename, product)
+            r = requests.request(
+                'GET',
+                url,
+                headers=self.headers,
+                params=params
+            ).json()
+            for size in r['options']:
+                logt(self.tid,"[size] {}  \t sku {} \t {}".format(
+                    size,
+                    r['options'][size]['SKU'],
+                    r['options'][size]['stockStatus']
+                ))
+                v = Variant(
+                    size,
+                    r['options'][size]['SKU'],
+                    r['options'][size]['stockStatus']
+                )
+                variants.append(v)
+            return variants
+        except KeyError:
+            logt(self.tid,"[error] exception while getting product info json")
+            exit(-1)
+        #raise Exception('get_product_skus() isnt implemented yet')
 
     def select_sku(self, variant_list):
         # compares product variants against sizes in config json
-        # returns a single variant object
+        # returns True if found a matching sku for the list of our sizes and adds that sku to global variable skupid
         logt(self.tid, 'selecting matching variant from list')
-        raise Exception('select_sku() isnt implemented yet')
+        self.skupid = None
+        for var in self.sizes:
+                for var2 in variant_list:
+                    if var==var2.size:
+                        logt(self.tid,"[match] found a matching size {} with sku {}".format(var2.size, var2.sku))
+                        self.skupid = var2.sku
+                        return True
+        logt(self.tid, "[error] didnt find a matching size {}".format(self.sizes))
+        return False
+        #raise Exception('select_sku() isnt implemented yet')
 
     def add_to_cart(self, variant):
         # adds a particular variant to cart
@@ -158,6 +216,7 @@ class Mesh(threading.Thread):
         try:
             return r.json()['ID']
         except KeyError:
+            #return False
             raise Exception('couldnt find new cart id')
 
     def get_customer_ids(self):
@@ -170,9 +229,9 @@ class Mesh(threading.Thread):
             "gender": "",
             "firstName": self.c['checkout']['fname'],
             "addresses": [{
-                "locale": "us",
+                "locale": self.c['checkout']['locale'],
                 "county": self.c['checkout']['state'],
-                "country": "United States",
+                "country": self.c['checkout']['country'],
                 "address1": self.c['checkout']['addr1'],
                 "town": self.c['checkout']['city'],
                 "postcode": self.c['checkout']['zip'],
@@ -321,6 +380,7 @@ class Mesh(threading.Thread):
         r.raise_for_status()
         try:
             if r.json()['status'] == 'DECLINED':
+                #print r.text
                 raise Exception('card was declined')
             return r.json()['orderClientID']
         except KeyError:
@@ -329,13 +389,80 @@ class Mesh(threading.Thread):
     def run(self):
         if self.c['product']['preset_sku'] is None:
             logt(self.tid, 'MODE 1: SCRAPING TO FIND MATCHING PRODUCT')
-            logt(self.tid, 'functionality not implemented yet')
-            exit(-1)
+            while len(self.matches) < 1:
+                products=self.get_all_products(600)
+                self.select_product(products)
+                if len(self.matches) < 1:
+                    logt(self.tid,"[sleep] no matches, waiting and refreshing")
+                    self.products = []  # Clear product list
+                    sleep(self.c['poll_time'])
+            while(True):
+                variants=self.get_product_skus(self.matches[0].sku)
+                if self.select_sku(variants):
+                    loop = True
+                    while loop:
+                        try:
+                            cart_id = self.add_to_cart(Variant(0, self.skupid, True))
+                            loop = False
+                        except requests.exceptions.HTTPError:
+                            logt(self.tid, 'couldnt atc, sleeping and retrying')
+                            sleep(self.c['poll_time'])
+                    logt(self.tid, 'got cart id {}'.format(cart_id))
+                    customer_id, address_id = self.get_customer_ids()
+                    logt(self.tid, 'got cust id {}'.format(customer_id))
+                    logt(self.tid, 'got addr id {}'.format(address_id))
+                    self.submit_customer(customer_id, address_id, cart_id)
+                    loop = True
+                    while loop:
+                        try:
+                            hps_id, payment_callback = self.get_hosted_payment(cart_id)
+                            loop = False
+                        except requests.exceptions.HTTPError:
+                            logt(self.tid, 'couldnt raise invoice, sleeping and retrying')
+                            sleep(self.c['poll_time'])
+                    logt(self.tid, 'got hps id {}'.format(hps_id))
+                    logt(self.tid, 'got callback {}'.format(payment_callback))
+                    token = self.submit_payment(hps_id)
+                    order = self.fire_callback(payment_callback, token)
+                    logt(self.tid, 'order id {}'.format(order))
+                    logt(self.tid, '[time] time to complete: {} sec'.format(abs(self.start_time-time())))
+                    break #outterloop
+                sleep(self.c['poll_time'])
         else:
             if len(self.c['product']['preset_sku']) == 6:
-                logt(self.tid, 'MODE 2: USING PREDEFINED SKU: {}'.format(self.c['product']['preset_sku']))
-                logt(self.tid, 'functionality not implemented yet')
-                exit(-1)
+                logt(self.tid, 'MODE 2 - RESTOCK: USING PREDEFINED SKU: {}'.format(self.c['product']['preset_sku']))
+                while(True):
+                    variants=self.get_product_skus(self.c['product']['preset_sku'])
+                    if self.select_sku(variants):
+                        loop = True
+                        while loop:
+                            try:
+                                cart_id = self.add_to_cart(Variant(0, self.skupid, True))
+                                loop = False
+                            except requests.exceptions.HTTPError:
+                                logt(self.tid, 'couldnt atc, sleeping and retrying')
+                                sleep(self.c['poll_time'])
+                        logt(self.tid, 'got cart id {}'.format(cart_id))
+                        customer_id, address_id = self.get_customer_ids()
+                        logt(self.tid, 'got cust id {}'.format(customer_id))
+                        logt(self.tid, 'got addr id {}'.format(address_id))
+                        self.submit_customer(customer_id, address_id, cart_id)
+                        loop = True
+                        while loop:
+                            try:
+                                hps_id, payment_callback = self.get_hosted_payment(cart_id)
+                                loop = False
+                            except requests.exceptions.HTTPError:
+                                logt(self.tid, 'couldnt raise invoice, sleeping and retrying')
+                                sleep(self.c['poll_time'])
+                        logt(self.tid, 'got hps id {}'.format(hps_id))
+                        logt(self.tid, 'got callback {}'.format(payment_callback))
+                        token = self.submit_payment(hps_id)
+                        order = self.fire_callback(payment_callback, token)
+                        logt(self.tid, 'order id {}'.format(order))
+                        logt(self.tid, '[time] time to complete: {} sec'.format(abs(self.start_time-time())))
+                        break #outterloop
+                    sleep(self.c['poll_time'])
             elif len(self.c['product']['preset_sku']) == 13:
                 logt(self.tid, 'MODE 3: USING PREDEFINED SKU.PID: {}'.format(self.c['product']['preset_sku']))
                 loop = True
@@ -367,4 +494,3 @@ class Mesh(threading.Thread):
                 logt(self.tid, '[time] time to complete: {} sec'.format(abs(self.start_time-time())))
             else:
                 raise Exception('malformed preset sku')
-
