@@ -30,7 +30,7 @@ class Mesh(threading.Thread):
         logt(tid, 'MeshAPI by Luke Davis (@R8T3D)')
         logt(tid, 'ATC by Alex Gompper (@573supreme/@edzart)')
         logt(tid, 'Improved by ServingShoes (@ServingShoescom)\n')
-        try:  # import the config file settings. see config.example.json for help
+        try:  # import the config file settings. see config.json for help
             with open(config_filename) as config:
                 self.c = json.load(config)
         except IOError:
@@ -212,7 +212,13 @@ class Mesh(threading.Thread):
             headers=self.headers,
             json=payload
         )
-        r.raise_for_status()
+
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError:
+            print r.text
+            r.raise_for_status()
+
         try:
             return r.json()['ID']
         except KeyError:
