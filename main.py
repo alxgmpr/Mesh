@@ -11,10 +11,10 @@ def main():
     i=0
     for config in os.listdir('configs'):
         print config
-        if config!="config.example.json":
+        if config != "config.example.json":
             threads.append(Mesh("configs/"+config, 'thread-'+str(i)))
             threads[i].start()
-            i+=1
+            i += 1
         else:
             print ("Change the default config filename")
 
