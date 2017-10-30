@@ -43,10 +43,8 @@ class Mesh(threading.Thread):
         self.proxy = self.c['proxy']
         self.matches = []  # Matching product list. Proceed if we only find one (or pick)
         self.sizes = self.c['product']['sizes']
-        self.keywords = self.c['product']['positive_kw'].split(
-    ',')  # Positive keywords (must match all keywords)
-        self.negatives = self.c['product']['negative_kw'].split(
-            ',')  # Negative keywords (matching any of these discards item)
+        self.keywords = self.c['product']['positive_kw'].split(',')  # Positive keywords (must match all keywords)
+        self.negatives = self.c['product']['negative_kw'].split(',')  # Negative keywords (matching any of these discards item)
         self.headers = {
             'Host': 'commerce.mesh.mx',
             'Content-Type': 'application/json',
@@ -129,16 +127,16 @@ class Mesh(threading.Thread):
                     match = False
             if match:
                 self.matches.append(p)
-                logt(self.tid,"[match] found a match {} \t {}".format(p.sku, p.name))
+                logt(self.tid, "[match] found a match {} \t {}".format(p.sku, p.name))
 
-        logt(self.tid,"[matches] found {} matching item(s)".format(len(self.matches)))
+        logt(self.tid, "[matches] found {} matching item(s)".format(len(self.matches)))
         #raise Exception('select_product() isnt implemented yet')
 
     def get_product_skus(self, product):
         # scrape product variants and stock status from its info
         # returns a list of variant objects
         logt(self.tid, 'fetching product variants')
-        variants=[]
+        variants = []
         try:
             params = {
                 "expand": "variations,informationBlocks,customisations",
