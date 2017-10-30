@@ -151,6 +151,7 @@ class Mesh(threading.Thread):
                 headers=self.headers,
                 params=params
             ).json()
+
             for size in r['options']:
                 logt(self.tid,"[size] {}  \t sku {} \t {}".format(
                     size,

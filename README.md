@@ -10,6 +10,7 @@ all keywords. Separate with comas. See config.example.json for more formatting h
 
 Blank values must be set to null. 
 
+
 ## Usage
 
 #### Installation
@@ -31,7 +32,7 @@ Have had trouble posting to DataCash card endpoint. Workin on it.
 
 ## Todo
 
-* Proxy support with multithreading
+* Proxy support with ~~multithreading~~
 * ~~Full checkout~~
 * ~~Add support for Footpatrol missing cart ID~~
 
